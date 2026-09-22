@@ -1,98 +1,193 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+ 
+import { useEffect, useRef } from 'react';
+import {
+  Animated,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
-
 export default function HomeScreen() {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.7)).current;
+  const taglineAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 6,
+        tension: 50,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    Animated.timing(taglineAnim, {
+      toValue: 1,
+      duration: 700,
+      delay: 500,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.content}>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+        {/* Logo */}
+        <Animated.View
+          style={[
+            styles.logoContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          <View style={styles.logoCircle}>
+            <Text style={styles.logoIcon}>🌿</Text>
+          </View>
+        </Animated.View>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+        {/* App Name */}
+        <Animated.Text
+          style={[
+            styles.appName,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          EcoGuard
+        </Animated.Text>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+        {/* Tagline */}
+        <Animated.View
+          style={[
+            styles.taglineContainer,
+            {
+              opacity: taglineAnim,
+              transform: [
+                {
+                  translateY: taglineAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [15, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Text style={styles.tagline}>
+            Protecting Nature.
+          </Text>
+
+          <Text style={styles.tagline}>
+            Empowering Communities.
+          </Text>
+        </Animated.View>
+
+        {/* Bottom */}
+        <View style={styles.bottomContainer}>
+          <View style={styles.line} />
+
+          <Text style={styles.bottomText}>
+            SMART • SUSTAINABLE • SECURE
+          </Text>
+        </View>
+
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
+    backgroundColor: '#0B3D2E',
   },
-  safeArea: {
+
+  content: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    paddingHorizontal: 30,
   },
-  title: {
-    textAlign: 'center',
+
+  logoContainer: {
+    marginBottom: 24,
   },
-  code: {
-    textTransform: 'uppercase',
+
+  logoCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#E8F5E9',
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+
+    elevation: 10,
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+
+  logoIcon: {
+    fontSize: 58,
+  },
+
+  appName: {
+    fontSize: 42,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
+
+  taglineContainer: {
+    marginTop: 14,
+    alignItems: 'center',
+  },
+
+  tagline: {
+    fontSize: 16,
+    lineHeight: 25,
+    color: '#C8E6C9',
+    fontWeight: '500',
+    letterSpacing: 0.4,
+  },
+
+  bottomContainer: {
+    position: 'absolute',
+    bottom: 35,
+    alignItems: 'center',
+  },
+
+  line: {
+    width: 45,
+    height: 2,
+    backgroundColor: '#81C784',
+    borderRadius: 2,
+    marginBottom: 12,
+  },
+
+  bottomText: {
+    fontSize: 9,
+    color: '#A5D6A7',
+    letterSpacing: 2,
+    fontWeight: '600',
   },
 });
+ 
