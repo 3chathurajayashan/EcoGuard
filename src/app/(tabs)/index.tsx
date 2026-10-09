@@ -39,10 +39,10 @@ export default function HomeScreen() {
               <Text style={styles.headerSubtitle}>Wildlife Conservation</Text>
             </View>
           </View>
-          <View style={styles.bellPlaceholder}>
+          <TouchableOpacity style={styles.bellPlaceholder} onPress={() => router.push('/conflicts')}>
             <Text style={{ fontSize: 24 }}>🔔</Text>
             <View style={styles.redDot} />
-          </View>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.welcomeText}>Welcome Ranger!</Text>
@@ -99,6 +99,17 @@ export default function HomeScreen() {
             <View style={styles.actionTextContent}>
               <Text style={styles.actionCardTitle}>View Map</Text>
               <Text style={styles.actionCardDesc}>Explore incident locations</Text>
+            </View>
+            <Feather name="chevron-right" size={24} color="#999" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/conflicts')}>
+            <View style={styles.actionIconContainer}>
+              <Text style={styles.actionIcon}>🐘</Text>
+            </View>
+            <View style={styles.actionTextContent}>
+              <Text style={styles.actionCardTitle}>Conflict Alerts</Text>
+              <Text style={styles.actionCardDesc}>Respond to human-wildlife conflict alerts</Text>
             </View>
             <Feather name="chevron-right" size={24} color="#999" />
           </TouchableOpacity>
