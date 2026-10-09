@@ -41,3 +41,8 @@ example
 # generated native folders
 /ios
 /android
+
+# Other
+shims/
+eslint.config.js
+metro.config.js
