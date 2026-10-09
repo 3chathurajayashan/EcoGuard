@@ -17,9 +17,9 @@ interface Place {
 
 // Villages around the park, for people who cannot (or would rather not) share their GPS position
 const PLACES: Place[] = [
-  { name: 'Kataragama paddy fields', latitude: 6.3915, longitude: 81.5528 },
-  { name: 'Tissa road', latitude: 6.3655, longitude: 81.5105 },
-  { name: 'Palatupana village', latitude: 6.3312, longitude: 81.4911 },
+  { name: 'Kataragama paddy fields', latitude: 6.4815, longitude: 81.5528 },
+  { name: 'Tissa road', latitude: 6.4555, longitude: 81.5105 },
+  { name: 'Palatupana village', latitude: 6.4212, longitude: 81.4911 },
 ];
 
 /** A villager reports a sighting. A liaison officer verifies it before any alert is sent. */

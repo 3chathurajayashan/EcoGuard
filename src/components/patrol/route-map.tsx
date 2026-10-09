@@ -44,7 +44,7 @@ export default function RouteMap({
   }, [route, waypoints, showStops, showYou]);
 
   return (
-    <SvgMap height={height} routes={routes} markers={markers}>
+    <SvgMap height={height} routes={routes} markers={markers} basemap="satellite">
       <MapChrome />
     </SvgMap>
   );

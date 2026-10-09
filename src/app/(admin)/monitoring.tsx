@@ -157,7 +157,7 @@ export default function WildlifeMonitoring() {
                   </View>
                 ))}
                 <View style={{ minWidth: 220, flex: 1 }}>
-                  <Button label="Move outside all zones" tone="outline" small disabled={busy} onPress={() => ping(6.46, 81.64, 'outside the zones')} />
+                  <Button label="Move outside all zones" tone="outline" small disabled={busy} onPress={() => ping(6.55, 81.64, 'outside the zones')} />
                 </View>
               </View>
               {result ? (
