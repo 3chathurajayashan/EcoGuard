@@ -54,3 +54,16 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## Troubleshooting
+
+### "No development build... is installed" Error (iOS Simulator)
+
+If you press `i` in the terminal to launch the iOS Simulator and encounter the following error:
+`CommandError: No development build (com.anonymous.ecoguard) for this project is installed.`
+
+This happens when Expo defaults to looking for a custom development build instead of using Expo Go. To fix this:
+1. Go back to the terminal where `npx expo start` is running.
+2. Press the **`s`** key on your keyboard. (This tells Expo to switch back to Expo Go mode).
+3. Now press the **`i`** key again.
+The app will now successfully launch in the iOS Simulator using the standard Expo Go app!
