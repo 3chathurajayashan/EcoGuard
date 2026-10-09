@@ -11,9 +11,22 @@ const HERO_IMAGES = [
 ];
 
 import { Ionicons, Feather } from '@expo/vector-icons';
+import LiaisonHome from '@/components/homes/liaison-home';
+import VillagerHome from '@/components/homes/villager-home';
+import { useUnreadCount } from '@/utils/notifications';
+import { useSession } from '@/utils/session';
 
+/** Each role lands on its own home. Rangers get the design below. */
 export default function HomeScreen() {
+  const { user } = useSession();
+  if (user?.role === 'COMMUNITY_LIAISON_OFFICER') return <LiaisonHome />;
+  if (user?.role === 'VILLAGER') return <VillagerHome />;
+  return <RangerHome />;
+}
+
+function RangerHome() {
   const [activeSlide, setActiveSlide] = useState(0);
+  const unread = useUnreadCount();
 
   return (
     <View style={styles.container}>
@@ -39,9 +52,9 @@ export default function HomeScreen() {
               <Text style={styles.headerSubtitle}>Wildlife Conservation</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.bellPlaceholder} onPress={() => router.push('/conflicts')}>
+          <TouchableOpacity style={styles.bellPlaceholder} onPress={() => router.push('/notifications')}>
             <Text style={{ fontSize: 24 }}>🔔</Text>
-            <View style={styles.redDot} />
+            {unread > 0 ? <View style={styles.redDot} /> : null}
           </TouchableOpacity>
         </View>
 
@@ -92,7 +105,18 @@ export default function HomeScreen() {
             <Feather name="chevron-right" size={24} color="#999" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionCard}>
+          <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/patrol')}>
+            <View style={styles.actionIconContainer}>
+              <Text style={styles.actionIcon}>🥾</Text>
+            </View>
+            <View style={styles.actionTextContent}>
+              <Text style={styles.actionCardTitle}>Patrol</Text>
+              <Text style={styles.actionCardDesc}>Start your assigned patrol and track your route</Text>
+            </View>
+            <Feather name="chevron-right" size={24} color="#999" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/map')}>
             <View style={styles.actionIconContainer}>
               <Text style={styles.actionIcon}>📍</Text>
             </View>

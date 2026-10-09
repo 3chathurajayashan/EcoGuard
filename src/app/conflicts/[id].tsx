@@ -1,25 +1,91 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import React from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AppHeader, BG, BottomNav, Card, GREEN, InfoRow, MockMap, RED, RiskPill, StatusPill, icon } from '@/components/conflicts/parts';
-import { acknowledgeCase, fmtDateTime, useCase } from '@/utils/conflict/store';
+import ConflictMap from '@/components/conflicts/conflict-map';
+import { AppHeader, BG, BottomNav, Card, GREEN, InfoRow, RED, RiskPill, StatusPill, icon } from '@/components/conflicts/parts';
+import { Banner, Loading, fmtDateTime } from '@/components/kit';
+import {
+  acknowledgeAlert,
+  fetchAlert,
+  fetchCollars,
+  fetchZones,
+  isClosedStatus,
+  rerouteAlert,
+  type Collar,
+  type ConflictCase,
+  type RiskZone,
+} from '@/utils/conflicts';
+import { errorMessage } from '@/utils/http';
+import { useSession } from '@/utils/session';
+import { useLoad } from '@/utils/use-load';
 
 export default function AlertDetails() {
-  const [c, setCase] = useCase();
-  if (!c) return <SafeAreaView style={styles.container} />;
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useSession();
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<{ tone: 'green' | 'red' | 'orange'; text: string } | null>(null);
 
+  const { data, loading, error, reload } = useLoad<{ alert: ConflictCase; zones: RiskZone[]; collars: Collar[] }>(async () => {
+    const [alert, zones, collars] = await Promise.all([
+      fetchAlert(String(id)),
+      fetchZones().catch(() => [] as RiskZone[]),
+      fetchCollars().catch(() => [] as Collar[]),
+    ]);
+    return { alert, zones, collars };
+  });
+
+  const run = async (fn: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      await fn();
+      await reload();
+      setNotice({ tone: 'green', text: done });
+    } catch (e) {
+      setNotice({ tone: 'red', text: errorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading && !data) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <AppHeader />
+        <Loading />
+        <BottomNav active="alerts" />
+      </SafeAreaView>
+    );
+  }
+  if (!data || !user) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <AppHeader />
+        <Banner tone="red" text={error || 'Alert not found.'} action={{ label: 'Back', onPress: () => router.back() }} />
+        <BottomNav active="alerts" />
+      </SafeAreaView>
+    );
+  }
+
+  const c = data.alert;
+  const closed = isClosedStatus(c.status);
+  const responder = user.role === 'RANGER' || user.role === 'COMMUNITY_LIAISON_OFFICER';
+  const canReroute = responder || user.role === 'PARK_MANAGER';
+  const isAssignedToMe = c.assignedToId === user.id;
+  const iAcknowledged = c.acknowledgedById === user.id;
+  // The person who took the alert responds; a liaison officer can always step in
+  const canRespond = responder && (iAcknowledged || user.role === 'COMMUNITY_LIAISON_OFFICER') && c.status !== 'NEW';
   const acknowledged = c.status !== 'NEW';
-  const inProgress = c.status === 'IN_PROGRESS';
-  const closed = c.status === 'RESOLVED' || c.status === 'FALSE_ALERT' || c.status === 'CANCELLED';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <AppHeader />
+      {notice ? <Banner tone={notice.tone} text={notice.text} /> : null}
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity style={styles.back} onPress={() => router.replace('/conflicts')}>
+        <TouchableOpacity style={styles.back} onPress={() => (router.canGoBack() ? router.back() : router.replace('/conflicts'))}>
           <Feather name="arrow-left" size={14} color="#444" />
           <Text style={styles.backText}>Back to Alerts</Text>
         </TouchableOpacity>
@@ -36,7 +102,9 @@ export default function AlertDetails() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.bannerTitle}>WILDLIFE CONFLICT ALERT</Text>
-              <Text style={styles.bannerSub}>A tracked elephant has entered a high-risk zone.</Text>
+              <Text style={styles.bannerSub}>
+                {c.source === 'GPS_COLLAR' ? 'A tracked animal has entered a high-risk zone.' : 'A community sighting was verified by a liaison officer.'}
+              </Text>
             </View>
           </View>
           <InfoRow icon={icon.paw} label="Animal ID">{c.animalId}</InfoRow>
@@ -53,7 +121,7 @@ export default function AlertDetails() {
         </Card>
 
         <Card title="LOCATION MAP">
-          <MockMap height={130} />
+          <ConflictMap height={140} zones={data.zones} collars={data.collars} alert={c} focusAlert />
         </Card>
 
         <Card title="RECIPIENT">
@@ -61,56 +129,86 @@ export default function AlertDetails() {
             <View style={styles.recipientIcon}>
               <Feather name="user" size={16} color="#444" />
             </View>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.recipientLabel}>Assigned To</Text>
               <Text style={styles.recipientName}>{c.assignedTo}</Text>
             </View>
+            {c.acknowledgedBy ? (
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.recipientLabel}>Acknowledged by</Text>
+                <Text style={styles.recipientName}>{c.acknowledgedBy}</Text>
+              </View>
+            ) : null}
           </View>
         </Card>
 
         {closed ? (
           <View style={styles.closedBox}>
             <Feather name="check-circle" size={18} color={GREEN} />
-            <Text style={styles.closedText}>This alert was closed. Open the Dashboard to reset the demo.</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.closedTitle}>Alert closed as {c.status.replace('_', ' ').toLowerCase()}</Text>
+              {c.closure?.remarks ? <Text style={styles.closedText}>{c.closure.remarks}</Text> : null}
+            </View>
           </View>
-        ) : (
-          <View style={styles.actions}>
-            <View style={[styles.actionBox, { borderColor: '#F1D9A4', backgroundColor: '#FFFBF1' }]}>
-              <View style={styles.actionHead}>
-                <View style={[styles.actionIcon, { backgroundColor: '#FFF3D6' }]}>
-                  <Feather name="check-circle" size={16} color="#B7791F" />
+        ) : responder || user.role === 'PARK_MANAGER' ? (
+          <>
+            <View style={styles.actions}>
+              <View style={[styles.actionBox, { borderColor: '#F1D9A4', backgroundColor: '#FFFBF1' }]}>
+                <View style={styles.actionHead}>
+                  <View style={[styles.actionIcon, { backgroundColor: '#FFF3D6' }]}>
+                    <Feather name="check-circle" size={16} color="#B7791F" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.actionTitle}>ACKNOWLEDGE ALERT</Text>
+                    <Text style={styles.actionSub}>Acknowledge that you have received the alert</Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.actionTitle}>ACKNOWLEDGE ALERT</Text>
-                  <Text style={styles.actionSub}>Acknowledge that you have received the alert</Text>
-                </View>
+                <TouchableOpacity
+                  style={[styles.btn, { backgroundColor: acknowledged || !responder ? '#BDBDBD' : '#B7791F' }]}
+                  disabled={acknowledged || !responder || busy}
+                  onPress={() => run(() => acknowledgeAlert(c.id), 'Alert acknowledged. You can start the response.')}>
+                  <Text style={styles.btnText}>
+                    {acknowledged ? 'ACKNOWLEDGED' : isAssignedToMe || user.role === 'COMMUNITY_LIAISON_OFFICER' ? 'ACKNOWLEDGE' : 'ACCEPT ALERT'}
+                  </Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={[styles.btn, { backgroundColor: acknowledged ? '#BDBDBD' : '#B7791F' }]}
-                disabled={acknowledged}
-                onPress={async () => setCase(await acknowledgeCase())}>
-                <Text style={styles.btnText}>{acknowledged ? 'ACKNOWLEDGED' : 'ACKNOWLEDGE'}</Text>
-              </TouchableOpacity>
+
+              <View style={[styles.actionBox, { borderColor: '#BFDDC4', backgroundColor: '#F4FBF5' }]}>
+                <View style={styles.actionHead}>
+                  <View style={[styles.actionIcon, { backgroundColor: '#DDF0E0' }]}>
+                    <Feather name="map-pin" size={16} color={GREEN} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.actionTitle}>START RESPONSE</Text>
+                    <Text style={styles.actionSub}>Respond to this alert and update your status</Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={[styles.btn, { backgroundColor: canRespond ? GREEN : '#BDBDBD' }]}
+                  disabled={!canRespond}
+                  onPress={() =>
+                    router.push(
+                      (c.status === 'IN_PROGRESS' ? `/conflicts/close?id=${c.id}` : `/conflicts/respond?id=${c.id}`) as any,
+                    )
+                  }>
+                  <Text style={styles.btnText}>{c.status === 'IN_PROGRESS' ? 'REVIEW & CLOSE  ›' : 'START RESPONSE  ›'}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
-            <View style={[styles.actionBox, { borderColor: '#BFDDC4', backgroundColor: '#F4FBF5' }]}>
-              <View style={styles.actionHead}>
-                <View style={[styles.actionIcon, { backgroundColor: '#DDF0E0' }]}>
-                  <Feather name="map-pin" size={16} color={GREEN} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.actionTitle}>START RESPONSE</Text>
-                  <Text style={styles.actionSub}>Respond to this alert and update your status</Text>
-                </View>
-              </View>
+            {c.status === 'NEW' && canReroute ? (
               <TouchableOpacity
-                style={[styles.btn, { backgroundColor: acknowledged ? GREEN : '#BDBDBD' }]}
-                disabled={!acknowledged}
-                onPress={() => router.push(inProgress ? '/conflicts/close' : '/conflicts/respond')}>
-                <Text style={styles.btnText}>{inProgress ? 'REVIEW & CLOSE  ›' : 'START RESPONSE  ›'}</Text>
+                style={styles.reroute}
+                disabled={busy}
+                onPress={() => run(() => rerouteAlert(c.id), 'Alert re-routed to the next available officer.')}>
+                <Feather name="phone-off" size={14} color="#B7791F" />
+                <Text style={styles.rerouteText}>Primary officer unreachable? Re-route this alert</Text>
               </TouchableOpacity>
-            </View>
-          </View>
+            ) : null}
+            {!responder ? <Text style={styles.readOnly}>Park managers can follow this alert; the assigned ranger responds to it.</Text> : null}
+          </>
+        ) : (
+          <Text style={styles.readOnly}>Your role can view this alert but not respond to it.</Text>
         )}
       </ScrollView>
       <BottomNav active="alerts" />
@@ -142,6 +240,10 @@ const styles = StyleSheet.create({
   actionSub: { fontSize: 9, color: '#666', marginTop: 2 },
   btn: { borderRadius: 7, paddingVertical: 10, alignItems: 'center' },
   btnText: { color: '#FFF', fontSize: 11, fontWeight: '800' },
-  closedBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#E8F5E9', borderRadius: 10, padding: 14 },
-  closedText: { flex: 1, fontSize: 12, color: GREEN },
+  reroute: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#F1D9A4', backgroundColor: '#FFFBF1' },
+  rerouteText: { fontSize: 12, color: '#8A5A12', fontWeight: '700' },
+  readOnly: { fontSize: 12, color: '#78909C', textAlign: 'center', marginTop: 12 },
+  closedBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: '#E8F5E9', borderRadius: 10, padding: 14 },
+  closedTitle: { fontSize: 13, fontWeight: '800', color: GREEN },
+  closedText: { fontSize: 12, color: '#3E6B4A', marginTop: 4 },
 });
