@@ -1,69 +1,53 @@
-# Welcome to your Expo app 👋
+# EcoGuard
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Wildlife conservation system for SE3070 (Case Studies in Software Engineering). One Expo app runs on Android, iOS and the web; it talks to the REST API in the `ecoGuard-backEnd` repository.
 
-## Get started
+## Who sees what
 
-1. Install dependencies
+| Role | Layout | Screens |
+|---|---|---|
+| Park Ranger | Phone tabs | Home, Report incident (with photos, works offline), Patrol (route, GPS tracking, waypoints, sync), Conflict alerts (acknowledge, respond, close), Map, My reports, Notifications, Profile |
+| Community Liaison Officer | Phone tabs | Home, Alerts, Verify community reports, Map, Profile |
+| Villager | Phone tabs | Report a sighting, My reports, Profile |
+| Park Manager | Dashboard (sidebar) | Dashboard, Analytics & Reports (export PDF/CSV/Excel), Patrol operations (assign routes), Wildlife monitoring, Incident management, Community engagement, Settings |
+| Conservation Researcher | Dashboard (sidebar) | The same pages, read only |
 
-   ```bash
-   npm install
-   ```
+Routes are guarded by role in `src/app/_layout.tsx`, and the backend checks the role again on every request.
 
-2. Start the app
+## Run the whole system
 
-   ```bash
-   npx expo start
-   ```
+1. Start the backend (see the backend README): `npm run seed -- --reset` then `npm run serve`. It listens on port 5001.
+2. In this folder: `npm install`, then `npx expo start`.
+   - Press `w` for the web version (manager and researcher dashboards look best here).
+   - On a phone, open the project with Expo Go. The app finds the backend on the same machine automatically; set `EXPO_PUBLIC_API_URL=http://<your-ip>:5001/api` to point somewhere else.
+3. Sign in with a demo account (password `Eco@12345`), or tap a role on the login screen: `ranger@`, `liaison@`, `manager@`, `researcher@`, `villager@` + `ecoguard.lk`.
 
-In the output, you'll find options to open the app in a
+Try the whole conflict story: sign in as the villager and report a sighting; as the liaison officer verify it in the Verify tab; as the assigned ranger acknowledge the alert, respond with photos and close it; as the manager open Analytics and export the report. As the manager you can also open Wildlife Monitoring and move a collar into a risk zone to see an alert raised automatically.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+On the Patrol screen, "Demo mode" simulates GPS movement along the route, so a patrol can be shown without walking.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Folders
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+src/app/(auth)       login and sign-up
+src/app/(tabs)       phone layout: home, patrol/, alerts, community, sightings, map, reports, profile
+src/app/(admin)      dashboard layout: dashboard, analytics/, patrol-operations, monitoring, ...
+src/app/conflicts    wildlife conflict alert screens
+src/app/incidents    incident reporting screens
+src/utils            API client, session, roles and one module per feature
+src/components       shared UI, maps and charts
+screenshots          screens of the conflict alert part
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Checks
 
-### Other setup steps
+```
+npx tsc --noEmit
+npx expo lint
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+`client/` is the earlier standalone web patrol prototype. The patrol feature in this app replaces it and is built on the same rules (waypoint types, offline sync, 50 m coverage).
 
 ## Troubleshooting
 
-### "No development build... is installed" Error (iOS Simulator)
-
-If you press `i` in the terminal to launch the iOS Simulator and encounter the following error:
-`CommandError: No development build (com.anonymous.ecoguard) for this project is installed.`
-
-This happens when Expo defaults to looking for a custom development build instead of using Expo Go. To fix this:
-1. Go back to the terminal where `npx expo start` is running.
-2. Press the **`s`** key on your keyboard. (This tells Expo to switch back to Expo Go mode).
-3. Now press the **`i`** key again.
-The app will now successfully launch in the iOS Simulator using the standard Expo Go app!
+"No development build (com.anonymous.ecoguard) for this project is installed" when pressing `i`: press `s` in the terminal running `npx expo start` to switch back to Expo Go, then press `i` again.
