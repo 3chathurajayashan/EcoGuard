@@ -31,13 +31,15 @@ export interface ConflictCase {
   riskZone: string;
   location: string;
   alertTime: string;
-  riskLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
   detectedBy: string;
   description: string;
   assignedTo: string;
   status: CaseStatus;
   response: FieldResponse | null;
   closure: Closure | null;
+  /** Where the alert came from; set when it is loaded from the backend. */
+  source?: 'GPS_COLLAR' | 'COMMUNITY_REPORT' | 'MANUAL';
 }
 
 export const createSeedCase = (): ConflictCase => ({
