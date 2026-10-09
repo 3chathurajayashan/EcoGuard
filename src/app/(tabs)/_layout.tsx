@@ -1,6 +1,7 @@
 import React from 'react';
-import AppTabs from '@/components/app-tabs';
+
+import RoleTabs from '@/components/role-tabs';
 
 export default function TabLayout() {
-  return <AppTabs />;
+  return <RoleTabs />;
 }
