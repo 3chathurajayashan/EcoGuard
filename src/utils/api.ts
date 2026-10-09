@@ -1,87 +1,94 @@
-import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
 import * as Network from 'expo-network';
+import { Platform } from 'react-native';
 
-// Use your computer's IP address (192.168.1.37 from metro logs) or an environment variable. 
-// "localhost" doesn't resolve to your Mac when running on a physical Android/iOS phone.
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.37:5001/api'; 
+import { errorMessage, http } from './http';
+
+// Incident reporting API. The server address and the signed-in user's token come from ./http
+// and the session, so nothing here is hard-coded to one machine or one user.
 const PENDING_INCIDENTS_KEY = '@pending_incidents';
+const api = http;
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
-});
-
-const MOCK_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY0ZDJiMmY4ZTRiMDEyMzQ1Njc4OWFiYyIsInJvbGUiOiJyYW5nZXIiLCJpYXQiOjE3OTE0ODQ3NTV9.NyYwgshOon8pDdvHvYmdOwFpU3z-fjWcBeDO0-wYE3I';
-
-api.interceptors.request.use(async (config) => {
-  config.headers.Authorization = `Bearer ${MOCK_TOKEN}`;
-  return config;
-});
+/** A client-side id so a report that is sent twice (a retry after a dropped connection) is stored once. */
+const newClientId = () => `inc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 export const getIncidentTypes = async () => {
   const response = await api.get('/incidents/types');
   return response.data.data || [];
 };
 
+/** Adds one photo to a multipart body. Phones send {uri,name,type}; browsers need a real File. */
+async function appendEvidence(formData: FormData, uri: string, index: number) {
+  const filename = uri.split('?')[0].split('/').pop() || `evidence-${index}.jpg`;
+  const ext = /\.(\w+)$/.exec(filename)?.[1]?.toLowerCase();
+
+  if (Platform.OS === 'web') {
+    const blob = await (await fetch(uri)).blob();
+    const name = ext ? filename : `evidence-${index}.${(blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`;
+    formData.append('evidence', blob, name);
+    return;
+  }
+
+  const type = ext ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'image/jpeg';
+  formData.append('evidence', { uri, name: filename, type } as any);
+}
+
+async function postIncident(incidentData: any, localImageUris: string[] | undefined, clientId: string) {
+  const formData = new FormData();
+  Object.keys(incidentData).forEach((key) => {
+    const value = incidentData[key];
+    if (value === undefined || value === null) return;
+    formData.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+  });
+  formData.append('clientId', clientId);
+
+  for (const [index, uri] of (localImageUris ?? []).entries()) {
+    await appendEvidence(formData, uri, index);
+  }
+  return api.post('/incidents', formData);
+}
+
 export const submitIncident = async (incidentData: any, localImageUris?: string[]) => {
+  const clientId = newClientId();
   const isConnected = await Network.getNetworkStateAsync();
 
   if (!isConnected.isConnected) {
-    return await storeIncidentLocally(incidentData, localImageUris);
+    return await storeIncidentLocally(incidentData, localImageUris, clientId);
   }
 
   try {
-    const formData = new FormData();
-    Object.keys(incidentData).forEach(key => {
-      const value = incidentData[key];
-      if (typeof value === 'object' && value !== null) {
-        formData.append(key, JSON.stringify(value));
-      } else {
-        formData.append(key, value);
-      }
-    });
-
-    if (localImageUris && localImageUris.length > 0) {
-      localImageUris.forEach((uri, index) => {
-        const filename = uri.split('/').pop();
-        const match = /\.(\w+)$/.exec(filename || '');
-        const type = match ? `image/${match[1]}` : `image`;
-        
-        formData.append('evidence', {
-          uri,
-          name: filename || `evidence-${index}.jpg`,
-          type,
-        } as any);
-      });
-    }
-
-    const response = await api.post('/incidents', formData);
-
+    const response = await postIncident(incidentData, localImageUris, clientId);
     return { success: true, data: response.data, synced: true };
   } catch (error) {
+    // No answer from the server (dropped connection): keep the report on the device to retry.
+    if (axios.isAxiosError(error) && !error.response) {
+      return await storeIncidentLocally(incidentData, localImageUris, clientId);
+    }
+    // The server answered and refused it (validation, permissions): saving it locally would
+    // only make it fail again on every retry, so report the reason instead.
     console.error('Failed to submit incident:', error);
-    // If request fails due to network even though we thought we had it, save locally
-    return await storeIncidentLocally(incidentData, localImageUris);
+    return { success: false, error: errorMessage(error) };
   }
 };
 
-const storeIncidentLocally = async (incidentData: any, localImageUris?: string[]) => {
+const storeIncidentLocally = async (incidentData: any, localImageUris: string[] | undefined, clientId: string) => {
   try {
     const existingStr = await AsyncStorage.getItem(PENDING_INCIDENTS_KEY);
     const existing = existingStr ? JSON.parse(existingStr) : [];
-    
+
     const newIncident = {
       ...incidentData,
       localImageUris,
-      id: Date.now().toString(),
+      id: clientId,
+      clientId,
       status: 'Pending Synchronization',
       timestamp: new Date().toISOString(),
     };
-    
+
     existing.push(newIncident);
     await AsyncStorage.setItem(PENDING_INCIDENTS_KEY, JSON.stringify(existing));
-    
+
     return { success: true, localId: newIncident.id, synced: false };
   } catch (error) {
     console.error('Failed to store incident locally:', error);
@@ -89,31 +96,46 @@ const storeIncidentLocally = async (incidentData: any, localImageUris?: string[]
   }
 };
 
+/**
+ * Sends every report saved while offline. Each one goes up with its photos and its own
+ * clientId; the server returns the stored report if it already has it, so retrying is safe.
+ * Reports the server refuses are dropped from the queue, the rest stay for the next attempt.
+ * Returns how many were synchronised.
+ */
 export const syncPendingIncidents = async () => {
   try {
     const isConnected = await Network.getNetworkStateAsync();
-    if (!isConnected.isConnected) return;
+    if (!isConnected.isConnected) return 0;
 
     const existingStr = await AsyncStorage.getItem(PENDING_INCIDENTS_KEY);
-    if (!existingStr) return;
-    
-    const pendingIncidents = JSON.parse(existingStr);
-    if (pendingIncidents.length === 0) return;
+    if (!existingStr) return 0;
 
-    // A real implementation would sync one by one or use the batch sync endpoint.
-    // Given the endpoint /api/incidents/sync accepts raw JSON, we can batch it,
-    // but the backend says "Accepts raw JSON", so photos might need a separate flow, 
-    // or we just send the JSON first and attach photos via POST /:id/evidence later.
-    // For simplicity in the use case:
-    
-    const response = await api.post('/incidents/sync', { incidents: pendingIncidents });
-    
-    if (response.status === 200 || response.status === 201) {
-      await AsyncStorage.removeItem(PENDING_INCIDENTS_KEY);
-      console.log('Successfully synced pending incidents');
+    const pending: any[] = JSON.parse(existingStr);
+    if (pending.length === 0) return 0;
+
+    const remaining: any[] = [];
+    let synced = 0;
+
+    for (const item of pending) {
+      const { localImageUris, id, clientId, status, timestamp, ...fields } = item;
+      try {
+        await postIncident(fields, localImageUris, clientId ?? id);
+        synced += 1;
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response && error.response.status < 500 && error.response.status !== 401) {
+          console.error('Dropping a report the server refused:', errorMessage(error));
+        } else {
+          remaining.push(item);
+        }
+      }
     }
+
+    if (remaining.length) await AsyncStorage.setItem(PENDING_INCIDENTS_KEY, JSON.stringify(remaining));
+    else await AsyncStorage.removeItem(PENDING_INCIDENTS_KEY);
+    return synced;
   } catch (error) {
     console.error('Sync failed:', error);
+    return 0;
   }
 };
 
@@ -150,10 +172,9 @@ export const getPendingIncidents = async () => {
 export const getCurrentUser = async () => {
   try {
     const response = await api.get('/auth/me');
-    // Assuming backend returns { success: true, data: { ...userObject } }
-    return response.data.data || response.data;
+    return response.data.user || null;
   } catch (error) {
-    console.log('User is not authenticated (backend returned 401). Falling back to local data.');
+    console.log('Could not load the signed-in user:', errorMessage(error));
     return null;
   }
 };
